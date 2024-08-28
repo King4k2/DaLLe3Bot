@@ -1,0 +1,4 @@
+aiohttp~=3.10.5
+aiodns
+aiohttp[speedups]
+aiofiles~=24.1.0
