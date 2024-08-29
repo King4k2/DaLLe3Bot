@@ -1,5 +1,5 @@
 import itertools
-import os.path
+import os
 import logging
 import config
 import time
@@ -27,9 +27,16 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
         for a in lines_list:
             progress_list.append(a.replace(" ", "").replace("\n", ""))
         with open(path_to_prompt_f, "r", encoding="utf-8") as f:
-            async with aiohttp.ClientSession() as sess:
-                with open("result.txt", "a", encoding="utf-8-sig")as result_file:
+            async with aiohttp.ClientSession(trust_env=True) as sess:
+                if res_saving_mode == "1":
+                    mode = "a"
+                    name = "result.txt"
+                else:
+                    mode = "a"
+                    name = "raw_result.txt"
+                with open(name, mode=mode, encoding="utf-8-sig")as result_file:
                     async with asyncio.TaskGroup() as taskgp:
+                        last_finished_list = [[0]]
                         for n, line_text in zip(itertools.count(1), f.readlines()):  # itertools.count(1)
                             is_el_in_progress = False
                             for o in progress_list:
@@ -44,110 +51,125 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
                                                              path_to_prompt_f=path_to_prompt_f, iter_n=n,
                                                              x_of_res=x_of_res, progress_f=progress_f,
                                                              result_file=result_file))
+    print("resaving")
+    if res_saving_mode == "2":
+        with open("raw_result.txt", "r", encoding='utf-8-sig')as rawr_f:
+            with open("result.txt", "a", encoding="utf-8-sig")as r_f:
+                text_list = rawr_f.readlines()
+                pattern = "iter_n;"
+                for c in range(1, len(text_list)+1):
+                    for line in text_list:
+                        splited_line = line.split(pattern)
+                        if splited_line[0] == str(c):
+                            r_f.write(splited_line[1])
 
 
-async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, content_type, progress_f, result_file,
-                 text_separator="*&*", res_saving_mode="1"):
+async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, content_type, progress_f,
+                 result_file, text_separator="*&*", res_saving_mode="1"):
     try:
         print(f"func num: {iter_n} started at {time.strftime('%X')}")
-        proxies = {
-            'https': config.proxy_url,
-            'http': config.proxy_url
-        }
-        proxy = config.proxy_url
         headers = {
             "Authorization": f"Bearer {config.API_KEY}",
             "openai-version": "2020-10-01",
             "Content-Type": "application/json"
         }
-        proxy_url = "http://hvrNfVwr:Ld5ZnE9K@212.52.6.52:64384"
-
         # Make request and extract data
         if content_type == "text" or content_type == "img":
             if content_type == "text":
                 while True:
-                    url = "https://api.openai.com/v1/chat/completions"
-                    data = {
-                            "model": f"{model}",
-                            "messages": [
-                                {"role": "system", "content": f"{prompt_r.split(':')[0]}"},
-                                {"role": "user", "content": f"{prompt_r.split(':')[1]}"}
-                            ],
-                        }
+                    try:
+                        url = "https://api.openai.com/v1/chat/completions"
+                        data = {
+                                "model": f"{model}",
+                                "messages": [
+                                    {"role": "system", "content": f"{prompt_r.split(':')[0]}"},
+                                    {"role": "user", "content": f"{prompt_r.split(':')[1]}"}
+                                ],
+                            }
 
-                    data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
+                        data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
 
-                    async with (sess.post(url=url, headers=headers, proxy=proxy_url, data=data_in_bytes) as resp):
-                        if resp.status != 200:
-                            continue
-                        json_bytes = bytes()
-                        async for line in resp.content:
-                            json_bytes = json_bytes + line
-                        json_content = json.loads(json_bytes)
-                        try:
-                            resp_msg = json_content.get("choices")[0].get("message").get("content")
-                        except TypeError:
-                            time.sleep(10)
-                            continue
-                        loop = asyncio.get_event_loop()
-                        if res_saving_mode == "1":
-                            resp_text = prompt_r + resp_msg + text_separator
-                            await loop.run_in_executor(None, blocked_write_in_the_end_of_file, result_file,
-                                                       resp_text)
-                        elif res_saving_mode == "2":
-                            resp_text = prompt_r.replace("\n", text_separator) + resp_msg.replace("\n", text_separator) + "\n"
-                            await loop.run_in_executor(None, blocked_write_in_the_end_of_file, result_file,
-                                                       resp_text)
-                        else:
-                            pass
-                        break
+                        async with sess.post(url=url, headers=headers, data=data_in_bytes) as resp:
+                            if resp.status != 200:
+                                continue
+                            json_bytes = bytes()
+                            async for line in resp.content:
+                                json_bytes = json_bytes + line
+                            json_content = json.loads(json_bytes)
+                            try:
+                                resp_msg = json_content.get("choices")[0].get("message").get("content")
+                                print(iter_n)
+                            except TypeError:
+                                await asyncio.sleep(5)
+                                continue
+                            if res_saving_mode == "1":
+                                resp_text = prompt_r + resp_msg + text_separator
+                                lock = asyncio.Lock()
+                                async with lock:
+                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_msg)
+                            elif res_saving_mode == "2":
+                                resp_text = f"{iter_n}iter_n;" + resp_msg.replace("\n", text_separator) + '\n'
+                                lock = asyncio.Lock()
+                                async with lock:
+                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_text)
+
+                            else:
+                                pass
+                            break
+                    except Exception as err:
+                        print(err)
+                        await asyncio.sleep(5)
+                        continue
 
                 # Extract IMG
             elif content_type == "img":
                 y = 0
                 while y < x_of_res:
-                    url = "https://api.openai.com/v1/images/generations"
-                    data = {
-                        "model": f"{model}",
-                        "prompt": f"{prompt_r}",
-                        "n": 1,
-                        "quality": "Standart",
-                        "size": "1024x1024",
-                    }
+                    try:
+                        url = "https://api.openai.com/v1/images/generations"
+                        data = {
+                            "model": f"{model}",
+                            "prompt": f"{prompt_r}",
+                            "n": 1,
+                            "quality": "Standart",
+                            "size": "1024x1024",
+                        }
 
-                    data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
-                    async with sess.post(url=url, headers=headers, proxy=proxy_url, data=data_in_bytes) as resp:
-                        json_bytes = bytes()
-                        async for line in resp.content:
-                            json_bytes = json_bytes + line
-                        json_content = json.loads(json_bytes)
-                        try:
-                            resp_img_url = json_content.get("data")[0].get("url")
-                        except TypeError:
-                            time.sleep(10)
-                            continue
-                        print(resp_img_url)
-                    async with sess.get(url=resp_img_url, proxy=proxy_url) as resp:
-                        path_to_img_dir = f"imgs/{iter_n}_iter"
-                        if not os.path.exists(path=path_to_img_dir):
-                            os.mkdir(path=path_to_img_dir)
-                        async with aiofiles.open(f"{path_to_img_dir}/img{iter_n}-variation{y+1}.png", "wb")as img_file:
-                            await img_file.write(await resp.read())
-                        y = y + 1
+                        data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
+                        async with sess.post(url=url, headers=headers, data=data_in_bytes) as resp:
+                            json_bytes = bytes()
+                            async for line in resp.content:
+                                json_bytes = json_bytes + line
+                            json_content = json.loads(json_bytes)
+                            try:
+                                resp_img_url = json_content.get("data")[0].get("url")
+                            except TypeError:
+                                await asyncio.sleep(10)
+                                continue
+                            print(resp_img_url)
+                        async with sess.get(url=resp_img_url) as resp:
+                            path_to_img_dir = f"imgs/{iter_n}_iter"
+                            if not os.path.exists(path=path_to_img_dir):
+                                os.mkdir(path=path_to_img_dir)
+                            async with aiofiles.open(f"{path_to_img_dir}/img{iter_n}-variation{y+1}.png", "wb")as img_file:
+                                await img_file.write(await resp.read())
+                            y = y + 1
+                    except aiohttp.ClientHttpProxyError:
+                        continue
             loop = asyncio.get_event_loop()
+            lock = asyncio.Lock()
+            async with lock:
+                blocked_write_in_the_end_of_file(f=progress_f, value=f"{iter_n}\n")
             await loop.run_in_executor(None, blocked_write_in_the_end_of_file, progress_f, f"{iter_n}\n")
             print(f"func num: {iter_n} finished at {time.strftime('%X')}")
         else:
             return 1
-    except Exception as err:
-        print(err)
+    finally:
+        print("e")
 
 
 def blocked_write_in_the_end_of_file(f, value):
     f.write(value)
-
-
-def blocked_write_in_pos(f,)
 
 
 def run_main():
