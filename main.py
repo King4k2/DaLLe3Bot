@@ -106,7 +106,7 @@ async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, cont
                                 resp_text = prompt_r + resp_msg + text_separator
                                 lock = asyncio.Lock()
                                 async with lock:
-                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_msg)
+                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_text)
                             elif res_saving_mode == "2":
                                 resp_text = f"{iter_n}iter_n;" + resp_msg.replace("\n", text_separator) + '\n'
                                 lock = asyncio.Lock()
