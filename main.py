@@ -97,7 +97,7 @@ async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, cont
 
                         data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
 
-                        async with sess.post(url=url, headers=headers, data=data_in_bytes, proxy=proxy_url) as resp:
+                        async with sess.post(url=url, headers=headers, data=data_in_bytes) as resp:
                             if resp.status != 200:
                                 continue
                             json_bytes = bytes()
