@@ -28,13 +28,7 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
             progress_list.append(a.replace(" ", "").replace("\n", ""))
         with open(path_to_prompt_f, "r", encoding="utf-8") as f:
             async with aiohttp.ClientSession(trust_env=True) as sess:
-                if res_saving_mode == "1":
-                    mode = "a"
-                    name = "result.txt"
-                else:
-                    mode = "a"
-                    name = "raw_result.txt"
-                with open(name, mode=mode, encoding="utf-8-sig")as result_file:
+                with open("raw_result.txt", mode="a", encoding="utf-8-sig")as result_file:
                     async with asyncio.TaskGroup() as taskgp:
                         last_finished_list = [[0]]
                         for n, line_text in zip(itertools.count(1), f.readlines()):  # itertools.count(1)
@@ -52,7 +46,7 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
                                                              x_of_res=x_of_res, progress_f=progress_f,
                                                              result_file=result_file))
     print("resaving")
-    if res_saving_mode == "2":
+    if res_saving_mode == "1":
         with open("raw_result.txt", "r", encoding='utf-8-sig')as rawr_f:
             with open("result.txt", "a", encoding="utf-8-sig")as r_f:
                 text_list = rawr_f.readlines()
@@ -62,6 +56,20 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
                         splited_line = line.split(pattern)
                         if splited_line[0] == str(c):
                             r_f.write(splited_line[1])
+    elif res_saving_mode == "2":
+        with open("raw_result.txt", "r", encoding='utf-8-sig')as rawr_f:
+            with open("result.txt", "a", encoding="utf-8-sig")as r_f:
+                text_list = rawr_f.read()
+                pattern = "iter_n;"
+                text_list = text_list.split(text_separator)
+                for c in range(1, len(text_list)+1):
+                    for line in text_list:
+                        splited_line = line.split(pattern)
+                        if splited_line[0] == str(c):
+                            text = splited_line[1]
+                            if c != 1:
+                                text = "\n" + text
+                            r_f.write(text)
 
 
 async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, content_type, progress_f,
@@ -103,18 +111,12 @@ async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, cont
                                 await asyncio.sleep(5)
                                 continue
                             if res_saving_mode == "1":
-                                resp_text = prompt_r + resp_msg + text_separator
-                                lock = asyncio.Lock()
-                                async with lock:
-                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_text)
+                                resp_text = f"{iter_n}iter_n;" + prompt_r + resp_msg + text_separator
                             elif res_saving_mode == "2":
                                 resp_text = f"{iter_n}iter_n;" + resp_msg.replace("\n", text_separator) + '\n'
-                                lock = asyncio.Lock()
-                                async with lock:
-                                    blocked_write_in_the_end_of_file(f=result_file, value=resp_text)
-
-                            else:
-                                pass
+                            lock = asyncio.Lock()
+                            async with lock:
+                                blocked_write_in_the_end_of_file(f=result_file, value=resp_text)
                             break
                     except Exception as err:
                         print(err)
