@@ -45,30 +45,31 @@ async def main(text_separator, content_type, model, res_saving_mode, path_to_pro
                                                              x_of_res=x_of_res, progress_f=progress_f,
                                                              result_file=result_file))
     print("resaving")
-    if res_saving_mode == "1":
-        with open("raw_result.txt", "r", encoding='utf-8-sig')as rawr_f:
-            with open("result.txt", "a", encoding="utf-8-sig")as r_f:
-                text_list = rawr_f.readlines()
-                pattern = "iter_n;"
-                for c in range(1, len(text_list)+1):
-                    for line in text_list:
-                        splited_line = line.split(pattern)
-                        if splited_line[0] == str(c):
-                            r_f.write(splited_line[1])
-    elif res_saving_mode == "2":
-        with open("raw_result.txt", "r", encoding='utf-8-sig') as rawr_f:
-            with open("result.txt", "a", encoding="utf-8-sig") as r_f:
-                text_list = rawr_f.read()
-                pattern = "iter_n;"
-                text_list = text_list.split(text_separator)
-                for c in range(1, len(text_list) + 1):
-                    for line in text_list:
-                        splited_line = line.split(pattern)
-                        if splited_line[0] == str(c):
-                            text = splited_line[1] + text_separator
-                            if c != 1:
-                                text = "\n" + text
-                            r_f.write(text)
+    if content_type == "text":
+        if res_saving_mode == "1":
+            with open("raw_result.txt", "r", encoding='utf-8-sig') as rawr_f:
+                with open("result.txt", "a", encoding="utf-8-sig") as r_f:
+                    text_list = rawr_f.read()
+                    text_list = text_list.split(text_separator)
+                    for c in range(1, len(text_list) + 1):
+                        for line in text_list:
+                            splited_line = line.split("iter_n;")
+                            if str(c) == splited_line[0]:
+                                text = splited_line[1] + text_separator
+                                if c != 1:
+                                    text = "\n" + text
+                                r_f.write(text)
+
+        elif res_saving_mode == "2":
+            with open("raw_result.txt", "r", encoding='utf-8-sig')as rawr_f:
+                with open("result.txt", "a", encoding="utf-8-sig")as r_f:
+                    text_list = rawr_f.readlines()
+                    pattern = "iter_n;"
+                    for c in range(1, len(text_list)+1):
+                        for line in text_list:
+                            splited_line = line.split(pattern)
+                            if splited_line[0] == str(c):
+                                r_f.write(splited_line[1])
 
 
 async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, content_type, progress_f,
@@ -96,7 +97,7 @@ async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, cont
 
                         data_in_bytes = json.dumps(data, indent=2).encode('utf-8')
 
-                        async with sess.post(url=url, headers=headers, data=data_in_bytes) as resp:
+                        async with sess.post(url=url, headers=headers, data=data_in_bytes, proxy=proxy_url) as resp:
                             if resp.status != 200:
                                 continue
                             json_bytes = bytes()
@@ -161,7 +162,6 @@ async def prompt(prompt_r, sess, model, x_of_res, iter_n, path_to_prompt_f, cont
             lock = asyncio.Lock()
             async with lock:
                 blocked_write_in_the_end_of_file(f=progress_f, value=f"{iter_n}\n")
-            await loop.run_in_executor(None, blocked_write_in_the_end_of_file, progress_f, f"{iter_n}\n")
             print(f"func num: {iter_n} finished at {time.strftime('%X')}")
         else:
             return 1
